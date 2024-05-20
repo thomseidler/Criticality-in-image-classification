@@ -12,15 +12,36 @@ mantik = {extras = ["mlflow"], version = "^0.5.0"}
 vit-keras = "^0.1.2"
 numpy = "^1.26.4"
 tensorflow-addons = "^0.23.0"
-tensorflow = "2.15.0"
 opencv-python = "^4.9.0.80"
 matplotlib = "^3.9.0"
 tensorflow-datasets = "^4.9.4"
 pandas = "^2.2.2"
+tensorflow = "^2.16"
 
 
 [tool.poetry.group.development.dependencies]
 black = "^24.4.2"
+
+
+[tool.poetry.group.vision-transformer.dependencies]
+# Note: ViT dependencies are listed explicitly to resolve an internal conflict with tensorflow-macos
+absl-py = ">=0.12.0"
+chex = ">=0.0.7"
+aqtp = "!=0.1.1"
+clu = ">=0.0.3"
+einops = ">=0.3.0"
+flax = ">=0.6.4"
+flaxformer = {git = "https://github.com/google/flaxformer"}
+jax = {extras=["cuda11_cudnn86"], version = ">=0.4.2"}
+ml-collections = ">=0.1.0"
+numpy = "^1.26.4"
+pandas = "^2.2.2"
+scipy = "^1.13.0"
+tensorflow-datasets = ">=4.0.1"
+tensorflow-probability = ">=0.1.1"
+tensorflow-text = ">=2.9.0"
+tqdm = "^4.66.4"
+vit-jax = {git = "git@github.com:google-research/vision_transformer.git"}
 
 [build-system]
 requires = ["poetry-core"]
