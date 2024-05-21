@@ -1,0 +1,11 @@
+name: critical-images
+
+entry_points:
+  vit:
+    parameters:
+      model_name: str
+      batch_size: int
+      weights_path: str
+      noise_steps: str
+      data_cache_dir: str
+    command: "python run_vit_jax.py --model-name {model_name} --batch-size {batch_size} --weights-path {weights_path} --noise-steps {noise_steps} --data-cache-dir {data_cache_dir}"

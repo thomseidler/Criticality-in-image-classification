@@ -1,10 +1,7 @@
-import flax
+import argparse
+
 import jax
-from matplotlib import pyplot as plt
 import numpy as np
-import optax
-import tqdm
-import tensorflow_datasets as tfds
 import tensorflow as tf
 import ml_collections
 import matplotlib.pyplot as plt
@@ -12,144 +9,108 @@ import matplotlib.pyplot as plt
 import mlflow
 import mantik
 import functools
+import argparse
 
 from vit_jax import checkpoint
-from vit_jax import input_pipeline
 from vit_jax import models
 from vit_jax import input_pipeline
 
 from vit_jax.configs import common as common_config
 from vit_jax.configs import models as models_config
 
-import PIL
-
 import critical_images
 
+import pathlib
 
-def get_accuracy(params, ds_test, apply_function):
-    """Returns accuracy evaluated on the test set."""
-    good = total = 0
-    steps = len(ds_test) // batch_size
-    for _, batch in zip(tqdm.trange(steps), ds_test.as_numpy_iterator()):
-        if _ == 0:
-            fig, ax = plt.subplots()
-            print((batch["image"][0, 0]))
-            img = batch["image"][0, 0] + 0.5
-            ax.imshow(img)
-            fig.savefig("test.png")
-        predicted = apply_function(params, batch["image"][0, :])
-        is_same = predicted.argmax(axis=-1) == batch["label"].argmax(axis=-1)
-        good += is_same.sum()
-        total += len(is_same.flatten())
-        print(good / total)
-    return good / total
-
+def get_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model-name", type=str)
+    parser.add_argument("--batch-size", type=int, default=512)
+    parser.add_argument("--weights-path", type=str, default=".")
+    parser.add_argument("--noise-steps", type=str)
+    parser.add_argument("--data-cache-dir", type=str, default=".")
+    return parser.parse_args()
 
 if __name__ == "__main__":
-    try:  # Workaround for this bug: https://github.com/tensorflow/datasets/issues/5355
-        MODEL_NAME = "ViT-B_32"
+    mlflow.autolog()
 
-        dataset = "imagenet2012"
-        batch_size = 64  # 512
-        config = common_config.get_config()
-        config.tfds_manual_dir = "."
-        # Manually overwrite dataset config to use only validation split
-        dataset_config = ml_collections.ConfigDict(
-            {"total_steps": 10_000, "pp": {"test": "validation", "crop": 384}}
+    commandline_arguments = get_arguments()
+    model_name = commandline_arguments.model_name
+    batch_size = commandline_arguments.batch_size
+    noise_steps = list(map(int, commandline_arguments.noise_steps.replace("(", "").replace(")","").split(",")))
+    weights_path = commandline_arguments.weights_path
+
+    #model_name = "ViT-B_32"
+
+    dataset = "imagenet2012"
+    #batch_size = 64  # 512
+
+
+    config = critical_images.vit.get_vit_config(batch_size, dataset)
+
+    ds_test = input_pipeline.get_data_from_tfds(config=config, mode="test")
+    num_classes = input_pipeline.get_dataset_info(dataset, "validation")[
+        "num_classes"
+    ]
+
+    ds_test = ds_test.shuffle(config.batch_eval)
+
+    ds_test = ds_test.take(256) # TODO Das kann spaeter raus
+
+    model_config = models_config.MODEL_CONFIGS[model_name]
+    model = models.VisionTransformer(num_classes=1000, **model_config)
+
+    model = critical_images.vit.initialize_model(model_name)
+
+    params = checkpoint.load(f"{weights_path}/{model_name}_imagenet2012.npz")
+    params["pre_logits"] = {}  # Need to restore empty leaf for Flax.
+
+    # TODO I might want to replicate params to all devices on node
+
+    vit_apply_repl = jax.jit(
+        lambda params_repl, inputs: model.apply(
+            dict(params=params_repl), inputs, train=False
         )
-        config.dataset = dataset
-        config.update(dataset_config)
-        config.batch = batch_size
-        config.batch_eval = batch_size
+    )
 
-        ds_test = input_pipeline.get_data_from_tfds(config=config, mode="test")
-        num_classes = input_pipeline.get_dataset_info(dataset, "validation")[
-            "num_classes"
-        ]
+    noise_schedule = critical_images.noise.NoiseSchedule(steps=5000)
 
-        # ds_test = ds_test.shuffle(config.batch_eval)
+    mlflow.log_param("image_size", config.pp.crop)
+    mlflow.log_param("batch_size", config.batch_eval)
+    # mlflow.log_param("validation_size", VALIDATION_SIZE)
+    mlflow.log_param("weights", "imagenet2012")
+    mlflow.log_param("validation_data", dataset)
+    mlflow.log_param("model", model_name)
 
-        ds_test = ds_test.take(256)
+    for noise_step in noise_steps:
 
-        model_config = models_config.MODEL_CONFIGS[MODEL_NAME]
-        model = models.VisionTransformer(num_classes=1000, **model_config)
-
-        params = checkpoint.load(f"{MODEL_NAME}_imagenet2012.npz")
-        params["pre_logits"] = {}  # Need to restore empty leaf for Flax.
-
-        vit_apply_repl = jax.jit(
-            lambda params_repl, inputs: model.apply(
-                dict(params=params_repl), inputs, train=False
-            )
+        noisify_inner = functools.partial(
+            critical_images.noise.get_noisy_sample,
+            step=noise_step,
+            noise_schedule=noise_schedule,
         )
 
-        noise_schedule = critical_images.noise.NoiseSchedule(steps=5000)
-        noise_steps = [
-            0,
-            100,
-            250,
-            500,
-            750,
-            1000,
-            1125,
-            1250,
-            1375,
-            1500,
-            1625,
-            1750,
-            2000,
-            2500,
-            3000,
-            3500,
-            4000,
-            4999,
-        ]
+        def noisify(record):
+            return {
+                "image": noisify_inner(record["image"]),
+                "label": record["label"],
+            }
 
-        noise_steps = [1000]
+        # Apply noise
+        ds_noise = ds_test.map(noisify)
 
-        mlflow.log_param("image_size", config.pp.crop)
-        mlflow.log_param("batch_size", config.batch_eval)
-        # mlflow.log_param("validation_size", VALIDATION_SIZE)
-        mlflow.log_param("weights", "imagenet2012")
-        mlflow.log_param("validation_data", dataset)
-        mlflow.log_param("model", MODEL_NAME)
+        ds_noise = ds_noise.map(
+            lambda record: {
+                "image": critical_images.vit.preprocess_image(record["image"]),
+                "label": record["label"],
+            }
+        )
 
-        for noise_step in noise_steps:
+        # TODO cleanup, more logging? - good, total, noise sigma and mu, transfer to and run on JUWELS, all weights for ViT, implement EffNet, debug jax
 
-            noisify_inner = functools.partial(
-                critical_images.noise.get_noisy_sample,
-                step=noise_step,
-                noise_schedule=noise_schedule,
-            )
+        mlflow.log_metric(
+            "Accuracy",
+            critical_images.vit.get_accuracy(params, ds_noise, apply_function=vit_apply_repl, batch_size=config.batch_eval),
+            step=noise_step,
+        )
 
-            def noisify(record):
-                print("RECORD", record["image"])
-                return {
-                    "image": noisify_inner(record["image"]),
-                    "label": record["label"],
-                }
-
-            # Apply noise
-            ds_noise = ds_test.map(noisify)
-
-            def preprocess_image(image: np.ndarray) -> np.ndarray:
-                min_vals = tf.math.reduce_min(image, axis=[1, 2, 3], keepdims=True)
-                max_vals = tf.math.reduce_max(image, axis=[1, 2, 3], keepdims=True)
-                print(min_vals)
-                return (image - min_vals) / (max_vals - min_vals) - 0.5
-
-            ds_noise = ds_noise.map(
-                lambda record: {
-                    "image": preprocess_image(record["image"]),
-                    "label": record["label"],
-                }
-            )
-
-            mlflow.log_metric(
-                "Accuracy",
-                get_accuracy(params, ds_noise, apply_function=vit_apply_repl),
-                step=noise_step,
-            )
-        print("Done")
-    except TypeError:
-        pass
