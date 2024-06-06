@@ -1,13 +1,14 @@
+UnicoreApiUrl: https://zam2125.zam.kfa-juelich.de:9112/JUWELS/rest/core
 Environment:
   Apptainer:
     Path: /p/home/jusers/seidler1/juwels/critical_images.sif
     Type: remote
   Options:
     - --nv
-    - -B /p/home/jusers/seidler1/juwels/weights /opt/weights
-    - -B /p/home/jusers/seidler1/juwels/data /opt/data
+    - -B /p/home/jusers/seidler1/juwels/weights:/opt/weights
+    - -B /p/home/jusers/seidler1/juwels/data:/opt/data
 Resources:
   Queue: devel
   Nodes: 1
 Exclude:
-  "*.sif"
+  - "*.sif"

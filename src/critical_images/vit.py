@@ -31,9 +31,9 @@ def preprocess_image(image: np.ndarray) -> np.ndarray:
     return (image - min_vals) / (max_vals - min_vals) - 0.5
 
 
-def get_vit_config(batch_size: int, dataset: str) -> ml_collections.ConfigDict:
+def get_vit_config(batch_size: int, dataset: str, data_path: str = ".") -> ml_collections.ConfigDict:
     config = common_config.get_config()
-    config.tfds_manual_dir = "." # TODO ds_info kommt irgendwo anders her
+    config.tfds_manual_dir = data_path # TODO ds_info kommt irgendwo anders her
     # Manually overwrite dataset config to use only validation split
     dataset_config = ml_collections.ConfigDict(
         {"total_steps": 10_000, "pp": {"test": "validation", "crop": 384}}

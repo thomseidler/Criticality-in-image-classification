@@ -39,6 +39,7 @@ if __name__ == "__main__":
     batch_size = commandline_arguments.batch_size
     noise_steps = list(map(int, commandline_arguments.noise_steps.replace("(", "").replace(")","").split(",")))
     weights_path = commandline_arguments.weights_path
+    data_path = commandline_arguments.data_cache_dir
 
     #model_name = "ViT-B_32"
 
@@ -46,7 +47,7 @@ if __name__ == "__main__":
     #batch_size = 64  # 512
 
 
-    config = critical_images.vit.get_vit_config(batch_size, dataset)
+    config = critical_images.vit.get_vit_config(batch_size, dataset, data_path=data_path)
 
     ds_test = input_pipeline.get_data_from_tfds(config=config, mode="test")
     num_classes = input_pipeline.get_dataset_info(dataset, "validation")[
