@@ -19,7 +19,7 @@ from vit_jax.configs import common as common_config
 from vit_jax.configs import models as models_config
 
 import critical_images
-
+import glob
 import pathlib
 
 def get_arguments() -> argparse.Namespace:
@@ -41,6 +41,10 @@ if __name__ == "__main__":
     weights_path = commandline_arguments.weights_path
     data_path = commandline_arguments.data_cache_dir
 
+    print(data_path)
+    print(weights_path)
+    print(glob.glob(data_path + "/*"))
+    print(glob.glob(weights_path + "/*"))
     #model_name = "ViT-B_32"
 
     dataset = "imagenet2012"
@@ -108,6 +112,7 @@ if __name__ == "__main__":
         )
 
         # TODO cleanup, more logging? - good, total, noise sigma and mu, transfer to and run on JUWELS, all weights for ViT, implement EffNet, debug jax
+        # TODO Also compute prediction entropy?
 
         mlflow.log_metric(
             "Accuracy",
